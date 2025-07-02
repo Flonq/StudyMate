@@ -3,72 +3,87 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   Clock,
   Calendar,
-  Trophy,
   Target,
-  BarChart3,
-  BookOpen,
-  GraduationCap,
-  Timer,
-  Pencil,
-  X,
+  TrendingUp,
+  User,
+  Mail,
+  Edit3,
   Save,
-  Settings,
-  ListTodo,
-  PieChart,
+  X,
+  Camera,
+  BookOpen,
+  Eye,
+  EyeOff,
+  Check,
+  Lock,
+  Home,
 } from "lucide-react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { toast } from "react-hot-toast";
+import {
+  UserIcon,
+  CalendarIcon,
+  PencilIcon,
+  CheckIcon,
+  XMarkIcon,
+  CameraIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  ChartBarIcon,
+  HomeIcon,
+} from "@heroicons/react/24/outline";
 
 export default function ProfilePage() {
   const router = useRouter();
-  const [user, setUser] = useState({
-    username: "",
-    name: "",
-    email: "",
-    profileImage: "",
-  });
-  const [showLargeImage, setShowLargeImage] = useState(false);
   const fileInputRef = useRef(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const [userData, setUserData] = useState({});
+  const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState({
-    name: "",
-    username: "",
-    email: "",
-  });
+  const [editData, setEditData] = useState({});
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-
-  useEffect(() => {
-    fetchUserData();
-  }, []);
+  const [showPassword, setShowPassword] = useState(false);
 
   const fetchUserData = async () => {
     try {
-      const token = document.cookie
-        .split("; ")
-        .find((row) => row.startsWith("token="))
-        ?.split("=")[1];
+      setLoading(true);
+      const token = localStorage.getItem("token");
 
-      if (!token) return;
+      if (!token) {
+        router.push("/login");
+        return;
+      }
 
       const response = await fetch("http://localhost:5000/api/users/me", {
         headers: {
           Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
       });
 
       if (response.ok) {
-        const userData = await response.json();
-        setUser(userData);
-        setEditForm({
-          name: userData.name,
-          username: userData.username,
-          email: userData.email,
+        const data = await response.json();
+        console.log("📊 User data received:", data); // Debug için
+        setUserData({
+          name: data.name || data.username,
+          username: data.username,
+          email: data.email,
+          profileImage: data.profileImage || "",
+          createdAt: data.createdAt,
         });
+      } else {
+        setError("Kullanıcı bilgileri alınamadı.");
+        if (response.status === 401) {
+          localStorage.removeItem("token");
+          router.push("/login");
+        }
       }
-    } catch (error) {
-      console.error("Veri çekme hatası:", error);
+    } catch (err) {
+      console.error("❌ Fetch error:", err);
+      setError("Bir hata oluştu.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -76,16 +91,23 @@ export default function ProfilePage() {
     const file = event.target.files[0];
     if (!file) return;
 
-    setIsUploading(true);
+    // Dosya boyutu kontrolü (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Dosya boyutu 5MB'dan küçük olmalıdır.");
+      return;
+    }
+
+    // Dosya tipi kontrolü
+    if (!file.type.startsWith("image/")) {
+      setError("Lütfen sadece resim dosyası seçin.");
+      return;
+    }
+
     const formData = new FormData();
     formData.append("profileImage", file);
 
     try {
-      const token = document.cookie
-        .split("; ")
-        .find((row) => row.startsWith("token="))
-        ?.split("=")[1];
-
+      const token = localStorage.getItem("token");
       const response = await fetch(
         "http://localhost:5000/api/users/profile-image",
         {
@@ -98,54 +120,38 @@ export default function ProfilePage() {
       );
 
       if (response.ok) {
-        const data = await response.json();
-        setUser((prev) => ({ ...prev, profileImage: data.profileImage }));
+        const updatedUser = await response.json();
+        console.log("✅ Profile image updated:", updatedUser);
+        setSuccess("Profil fotoğrafı başarıyla güncellendi!");
+        fetchUserData(); // Verileri yenile
+      } else {
+        const errorData = await response.json();
+        setError(errorData.message || "Profil fotoğrafı yüklenemedi.");
       }
-    } catch (error) {
-      console.error("Resim yükleme hatası:", error);
-    } finally {
-      setIsUploading(false);
+    } catch (err) {
+      console.error("❌ Image upload error:", err);
+      setError("Profil fotoğrafı yüklenirken bir hata oluştu.");
     }
-  };
-
-  // Sayfa dışı tıklamaları dinle
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (showLargeImage) {
-        setShowLargeImage(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [showLargeImage]);
-
-  // Örnek veriler (daha sonra backend'den alınacak)
-  const userStats = {
-    totalStudyTime: "124 saat",
-    weeklyAverage: "18 saat",
-    longestStreak: "12 gün",
-    totalTasks: "156",
-    completedTasks: "134",
-    efficiency: "86%",
   };
 
   const handleEdit = () => {
     setIsEditing(true);
+    setEditData({
+      username: userData.username,
+      email: userData.email,
+      password: "",
+    });
+    setPassword("");
     setError("");
     setSuccess("");
   };
 
   const handleCancel = () => {
     setIsEditing(false);
-    setEditForm({
-      name: user.name,
-      username: user.username,
-      email: user.email,
-    });
+    setEditData({});
+    setPassword("");
     setError("");
+    setSuccess("");
   };
 
   const handleSubmit = async (e) => {
@@ -153,12 +159,13 @@ export default function ProfilePage() {
     setError("");
     setSuccess("");
 
-    try {
-      const token = document.cookie
-        .split("; ")
-        .find((row) => row.startsWith("token="))
-        ?.split("=")[1];
+    if (!editData.password) {
+      setError("Değişiklikleri kaydetmek için şifrenizi girmelisiniz.");
+      return;
+    }
 
+    try {
+      const token = localStorage.getItem("token");
       const response = await fetch(
         "http://localhost:5000/api/users/update-profile",
         {
@@ -167,176 +174,298 @@ export default function ProfilePage() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify(editForm),
+          body: JSON.stringify({
+            username: editData.username,
+            email: editData.email,
+            password: editData.password,
+          }),
         }
       );
 
-      const data = await response.json();
-
       if (response.ok) {
-        setUser(data.user);
-        setSuccess("Profil başarıyla güncellendi");
+        setSuccess("Profil başarıyla güncellendi.");
         setIsEditing(false);
+        fetchUserData();
+        setEditData({});
       } else {
-        setError(data.message);
+        const errorData = await response.json();
+        setError(
+          errorData.message ||
+            "Güncelleme başarısız. Şifrenizi doğru girdiğinizden emin olun."
+        );
       }
-    } catch (error) {
-      setError("Bir hata oluştu");
+    } catch (err) {
+      console.error("❌ Update error:", err);
+      setError("Bir hata oluştu.");
     }
   };
 
+  // Tarih formatlama fonksiyonu
+  const formatDate = (dateString) => {
+    if (!dateString) return "Bilinmiyor";
+
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "Bilinmiyor";
+
+      return date.toLocaleDateString("tr-TR", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    } catch (error) {
+      console.error("❌ Date formatting error:", error);
+      return "Bilinmiyor";
+    }
+  };
+
+  useEffect(() => {
+    fetchUserData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Profil yükleniyor...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Profil Başlığı */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-4">
-              <div className="relative">
-                <div className="w-20 h-20 rounded-full overflow-hidden bg-blue-100">
-                  {user.profileImage ? (
-                    <img
-                      src={user.profileImage}
-                      alt="Profil"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <GraduationCap className="w-10 h-10 text-blue-600" />
-                    </div>
-                  )}
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
+      {/* Animated Background */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute -inset-10 opacity-50">
+          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob"></div>
+          <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-yellow-500 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000"></div>
+          <div className="absolute bottom-1/4 left-1/3 w-96 h-96 bg-pink-500 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000"></div>
+        </div>
+      </div>
+
+      <div className="relative z-10 container mx-auto px-4 py-8 max-w-4xl">
+        {/* Header */}
+        <div className="text-center mb-12">
+          <h1 className="text-5xl font-bold bg-gradient-to-r from-white via-purple-200 to-blue-200 bg-clip-text text-transparent mb-4">
+            Profil
+          </h1>
+          <p className="text-purple-200 text-lg">Hesap bilgilerinizi yönetin</p>
+        </div>
+
+        <div className="grid gap-8">
+          {/* Profile Card */}
+          <div className="bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 p-8">
+            <div className="flex flex-col md:flex-row items-center space-y-6 md:space-y-0 md:space-x-8">
+              {/* Profile Image */}
+              <div className="relative group">
+                <div className="w-32 h-32 rounded-full overflow-hidden bg-gradient-to-r from-purple-600 to-blue-600 p-1">
+                  <div className="w-full h-full rounded-full overflow-hidden bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                    {userData.profileImage ? (
+                      <img
+                        src={userData.profileImage}
+                        alt="Profile"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <UserIcon className="w-16 h-16 text-purple-300" />
+                    )}
+                  </div>
                 </div>
                 <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="absolute bottom-0 right-0 bg-white rounded-full p-1 shadow-lg hover:bg-gray-100"
+                  onClick={() =>
+                    document.getElementById("profileImageInput").click()
+                  }
+                  className="absolute bottom-0 right-0 p-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-full shadow-lg hover:shadow-xl transform hover:scale-110 transition-all duration-300"
                 >
-                  <Pencil className="w-4 h-4 text-gray-600" />
+                  <CameraIcon className="w-5 h-5" />
                 </button>
                 <input
+                  id="profileImageInput"
                   type="file"
-                  ref={fileInputRef}
+                  accept="image/*"
                   onChange={handleImageUpload}
                   className="hidden"
-                  accept="image/*"
                 />
               </div>
+
+              {/* Profile Info */}
+              <div className="flex-1 text-center md:text-left">
+                <h2 className="text-3xl font-bold text-white mb-2">
+                  {userData.name || "Kullanıcı"}
+                </h2>
+                <p className="text-purple-200 text-lg mb-1">
+                  @{userData.username || "username"}
+                </p>
+                <p className="text-purple-300 mb-4">
+                  {userData.email || "email@example.com"}
+                </p>
+                <div className="flex items-center justify-center md:justify-start space-x-4 text-sm text-purple-300">
+                  <div className="flex items-center space-x-1">
+                    <CalendarIcon className="w-4 h-4" />
+                    <span>Üye: {formatDate(userData.createdAt)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Edit Button */}
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">
-                  {user.username}
-                </h1>
-                <p className="text-gray-500">{user.email}</p>
-              </div>
-            </div>
-
-            {/* Ayarlar Butonu */}
-            <button
-              onClick={() => router.push("/settings")}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-              title="Profil Ayarları"
-            >
-              <Settings className="w-6 h-6 text-gray-600" />
-            </button>
-          </div>
-        </div>
-
-        {/* Büyük Resim Modal */}
-        {showLargeImage && user.profileImage && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="relative max-w-2xl max-h-2xl">
-              <button
-                onClick={() => setShowLargeImage(false)}
-                className="absolute top-4 right-4 text-white"
-              >
-                <X className="w-6 h-6" />
-              </button>
-              <Image
-                src={user.profileImage}
-                alt="Profil"
-                width={500}
-                height={500}
-                className="rounded-lg"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Yükleme Göstergesi */}
-        {isUploading && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-4 rounded-lg">Resim yükleniyor...</div>
-          </div>
-        )}
-
-        {/* İstatistikler */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <div className="flex items-center gap-4">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Calendar className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <h3 className="text-sm text-gray-500">Bugünkü Görevler</h3>
-                <p className="text-2xl font-semibold">12</p>
+                {!isEditing ? (
+                  <button
+                    onClick={handleEdit}
+                    className="px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl font-semibold hover:from-purple-700 hover:to-blue-700 transition-all duration-300 flex items-center space-x-2"
+                  >
+                    <PencilIcon className="w-5 h-5" />
+                    <span>Düzenle</span>
+                  </button>
+                ) : (
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={handleCancel}
+                      className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors"
+                    >
+                      İptal
+                    </button>
+                    <button
+                      onClick={handleSubmit}
+                      className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition-colors"
+                    >
+                      Kaydet
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <div className="flex items-center gap-4">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <ListTodo className="w-6 h-6 text-green-600" />
+          {/* Profile Details */}
+          <div className="bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 p-8">
+            <h3 className="text-2xl font-bold text-white mb-6 flex items-center space-x-3">
+              <UserIcon className="w-6 h-6 text-purple-300" />
+              <span>Kişisel Bilgiler</span>
+            </h3>
+
+            {!isEditing ? (
+              <div className="grid gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="p-4 bg-white/5 rounded-xl">
+                    <label className="block text-purple-200 text-sm font-medium mb-2">
+                      Ad Soyad
+                    </label>
+                    <p className="text-white text-lg">
+                      {userData.name || "Belirtilmemiş"}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-white/5 rounded-xl">
+                    <label className="block text-purple-200 text-sm font-medium mb-2">
+                      Kullanıcı Adı
+                    </label>
+                    <p className="text-white text-lg">
+                      {userData.username || "Belirtilmemiş"}
+                    </p>
+                  </div>
+                </div>
+                <div className="p-4 bg-white/5 rounded-xl">
+                  <label className="block text-purple-200 text-sm font-medium mb-2">
+                    E-posta Adresi
+                  </label>
+                  <p className="text-white text-lg">
+                    {userData.email || "Belirtilmemiş"}
+                  </p>
+                </div>
+                <div className="p-4 bg-white/5 rounded-xl">
+                  <label className="block text-purple-200 text-sm font-medium mb-2">
+                    Üyelik Tarihi
+                  </label>
+                  <p className="text-white text-lg">
+                    {formatDate(userData.createdAt)}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-sm text-gray-500">Tamamlanan</h3>
-                <p className="text-2xl font-semibold">85%</p>
-              </div>
-            </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-purple-200 text-sm font-medium mb-2">
+                      Ad Soyad
+                    </label>
+                    <input
+                      type="text"
+                      value={editData.name}
+                      onChange={(e) =>
+                        setEditData({ ...editData, name: e.target.value })
+                      }
+                      className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                      placeholder="Adınızı girin"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-purple-200 text-sm font-medium mb-2">
+                      Kullanıcı Adı
+                    </label>
+                    <input
+                      type="text"
+                      value={editData.username}
+                      onChange={(e) =>
+                        setEditData({ ...editData, username: e.target.value })
+                      }
+                      className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                      placeholder="Kullanıcı adınızı girin"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-purple-200 text-sm font-medium mb-2">
+                    E-posta Adresi
+                  </label>
+                  <input
+                    type="email"
+                    value={editData.email}
+                    onChange={(e) =>
+                      setEditData({ ...editData, email: e.target.value })
+                    }
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                    placeholder="E-posta adresinizi girin"
+                  />
+                </div>
+              </form>
+            )}
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <div className="flex items-center gap-4">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <Clock className="w-6 h-6 text-purple-600" />
+          {/* Statistics */}
+          <div className="bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 p-8">
+            <h3 className="text-2xl font-bold text-white mb-6 flex items-center space-x-3">
+              <ChartBarIcon className="w-6 h-6 text-purple-300" />
+              <span>İstatistikler</span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="text-center p-4 bg-white/5 rounded-xl">
+                <div className="text-3xl font-bold text-blue-400 mb-2">24</div>
+                <div className="text-purple-200">Toplam Etkinlik</div>
               </div>
-              <div>
-                <h3 className="text-sm text-gray-500">Toplam Süre</h3>
-                <p className="text-2xl font-semibold">24s</p>
+              <div className="text-center p-4 bg-white/5 rounded-xl">
+                <div className="text-3xl font-bold text-green-400 mb-2">18</div>
+                <div className="text-purple-200">Tamamlanan</div>
+              </div>
+              <div className="text-center p-4 bg-white/5 rounded-xl">
+                <div className="text-3xl font-bold text-yellow-400 mb-2">
+                  75%
+                </div>
+                <div className="text-purple-200">Başarı Oranı</div>
               </div>
             </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <div className="flex items-center gap-4">
-              <div className="p-2 bg-orange-100 rounded-lg">
-                <PieChart className="w-6 h-6 text-orange-600" />
-              </div>
-              <div>
-                <h3 className="text-sm text-gray-500">Verimlilik</h3>
-                <p className="text-2xl font-semibold">92%</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Hızlı İşlemler */}
-        <div className="mt-8 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <h2 className="text-xl font-semibold mb-4">Hızlı İşlemler</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <button className="p-4 bg-blue-50 hover:bg-blue-100 rounded-lg text-blue-600 font-medium transition-colors">
-              Yeni Görev Ekle
-            </button>
-            <button
-              onClick={() => router.push("/schedule")}
-              className="p-4 bg-indigo-50 hover:bg-indigo-100 rounded-lg text-indigo-600 font-medium transition-colors"
-            >
-              Çalışma Planı Oluştur
-            </button>
-            <button className="p-4 bg-purple-50 hover:bg-purple-100 rounded-lg text-purple-600 font-medium transition-colors">
-              Takvimi Görüntüle
-            </button>
           </div>
         </div>
       </div>
+
+      {/* Floating Action Button */}
+      <button
+        onClick={() => router.push("/")}
+        className="fixed bottom-6 right-6 p-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-full shadow-lg hover:shadow-xl transform hover:scale-110 transition-all duration-300 z-40"
+      >
+        <HomeIcon className="w-6 h-6" />
+      </button>
     </div>
   );
 }

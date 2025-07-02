@@ -1,39 +1,37 @@
 const nodemailer = require("nodemailer");
 
-// Gmail transporter
-const gmailTransporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+// Gmail transporter - sadece gerektiğinde oluştur
+const createGmailTransporter = () => {
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.log("📧 Email credentials not found, skipping email setup");
+    return null;
+  }
 
-// Outlook transporter
-const outlookTransporter = nodemailer.createTransport({
-  host: "smtp-mail.outlook.com",
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.OUTLOOK_USER,
-    pass: process.env.OUTLOOK_PASS,
-  },
-  tls: {
-    ciphers: "SSLv3",
-    rejectUnauthorized: false,
-  },
-});
+  return nodemailer.createTransporter({
+    service: "gmail",
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+};
 
 const sendResetEmail = async (to, resetToken) => {
   const resetUrl = `http://localhost:3000/reset-password/${resetToken}`;
 
-  // Debug için email ayarlarını kontrol et
   console.log("E-posta gönderme ayarları:", {
     from: process.env.EMAIL_USER,
     to: to,
     emailUser: process.env.EMAIL_USER,
     emailPassLength: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.length : 0,
   });
+
+  const gmailTransporter = createGmailTransporter();
+
+  if (!gmailTransporter) {
+    console.log("📧 Email transporter not available, skipping email send");
+    return false;
+  }
 
   const mailOptions = {
     from: process.env.EMAIL_USER,
@@ -71,42 +69,9 @@ const sendResetEmail = async (to, resetToken) => {
     return true;
   } catch (error) {
     console.error("E-posta gönderme hatası:", error);
-    // Hata detaylarını göster
-    if (error.response) {
-      console.error("SMTP Yanıt Hatası:", error.response);
-    }
     return false;
   }
 };
-
-// Transporterların bağlantısını test et
-const testEmailConnection = async () => {
-  try {
-    await gmailTransporter.verify();
-    console.log("Gmail bağlantısı başarılı");
-  } catch (error) {
-    console.error("Gmail bağlantı hatası:", error);
-  }
-
-  try {
-    await outlookTransporter.verify();
-    console.log("Outlook bağlantısı başarılı");
-  } catch (error) {
-    console.error("Outlook bağlantı hatası:", error);
-  }
-};
-
-// Uygulama başladığında bağlantıları test et
-testEmailConnection();
-
-// Uygulama başladığında bağlantıyı test et
-gmailTransporter.verify((error, success) => {
-  if (error) {
-    console.error("SMTP Bağlantı Hatası:", error);
-  } else {
-    console.log("SMTP Sunucu hazır");
-  }
-});
 
 module.exports = {
   sendResetEmail,

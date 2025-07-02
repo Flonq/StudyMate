@@ -10,13 +10,14 @@ import {
   Platform,
   Alert,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { authService } from "../../services/api";
 
 export default function LoginScreen() {
-  const navigation = useNavigation();
+  const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -27,32 +28,25 @@ export default function LoginScreen() {
       return;
     }
 
-    setIsLoading(true);
     try {
-      const response = await axios.post(
-        "http://172.20.10.2:5000/api/users/login",
-        {
-          username,
-          password,
-        }
-      );
+      setIsLoading(true);
+      console.log("🔐 Giriş yapılıyor...", { username, password: "***" });
 
-      const { token, user } = response.data;
+      const response = await authService.login(username, password);
+      console.log("✅ Giriş başarılı:", response);
 
-      // Token'ı güvenli şekilde sakla
-      await AsyncStorage.setItem("userToken", token);
-      await AsyncStorage.setItem("userData", JSON.stringify(user));
+      if (response.token) {
+        console.log("🔑 Token kaydedildi");
 
-      navigation.reset({
-        index: 0,
-        routes: [{ name: "(tabs)" }],
-      });
+        setTimeout(() => {
+          router.replace("/(tabs)");
+        }, 500);
+      } else {
+        Alert.alert("Hata", "Giriş başarısız");
+      }
     } catch (error) {
-      console.log(error);
-      Alert.alert(
-        "Giriş Başarısız",
-        error.response?.data?.message || "Bir hata oluştu"
-      );
+      console.error("❌ Giriş hatası:", error);
+      Alert.alert("Hata", error.message || "Giriş yapılırken bir hata oluştu");
     } finally {
       setIsLoading(false);
     }
@@ -94,7 +88,7 @@ export default function LoginScreen() {
           </View>
 
           <TouchableOpacity
-            onPress={() => navigation.navigate("forgot-password")}
+            onPress={() => router.push("forgot-password")}
             style={styles.forgotPassword}
           >
             <Text style={styles.forgotPasswordText}>Şifremi Unuttum</Text>
@@ -112,7 +106,7 @@ export default function LoginScreen() {
 
           <View style={styles.registerContainer}>
             <Text style={styles.registerText}>Hesabınız yok mu? </Text>
-            <TouchableOpacity onPress={() => navigation.navigate("register")}>
+            <TouchableOpacity onPress={() => router.push("register")}>
               <Text style={styles.registerLink}>Kayıt Ol</Text>
             </TouchableOpacity>
           </View>

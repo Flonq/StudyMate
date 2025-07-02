@@ -1,0 +1,39 @@
+import { NextResponse } from "next/server";
+
+export function middleware(request) {
+  const { pathname } = request.nextUrl;
+
+  // Auth gerektirmeyen sayfalar
+  const publicPaths = ["/login", "/register", "/forgot-password"];
+  const isPublicPath = publicPaths.some((path) => pathname.startsWith(path));
+
+  // Eğer public path ise, direkt geçir
+  if (isPublicPath) {
+    return NextResponse.next();
+  }
+
+  // Token kontrolü
+  const token =
+    request.cookies.get("token")?.value ||
+    request.headers.get("authorization")?.replace("Bearer ", "");
+
+  // Token yoksa login'e yönlendir
+  if (!token) {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - api (API routes)
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     */
+    "/((?!api|_next/static|_next/image|favicon.ico).*)",
+  ],
+};

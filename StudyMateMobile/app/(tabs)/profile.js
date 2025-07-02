@@ -4,27 +4,44 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Image,
   ScrollView,
   Alert,
-  Platform,
+  ActivityIndicator,
+  Image,
+  TextInput,
+  Modal,
+  Dimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
+import { LinearGradient } from "expo-linear-gradient";
 import { authService } from "../../services/api";
-import { useNavigation } from "@react-navigation/native";
-import { getUserData, getUserToken } from "../../utils/storage";
+import { useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { format } from "date-fns";
+import { tr } from "date-fns/locale";
+import * as ImagePicker from "expo-image-picker";
+import { userService } from "../../services/api";
+
+const { width } = Dimensions.get("window");
 
 export default function ProfileScreen() {
-  const navigation = useNavigation();
+  const router = useRouter();
   const [user, setUser] = useState({
-    username: "",
     name: "",
+    username: "",
     email: "",
     profileImage: "",
+    createdAt: "",
   });
-  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editData, setEditData] = useState({
+    username: "",
+    email: "",
+    password: "",
+  });
+  const [showEditModal, setShowEditModal] = useState(false);
 
   useEffect(() => {
     fetchUserData();
@@ -32,210 +49,378 @@ export default function ProfileScreen() {
 
   const fetchUserData = async () => {
     try {
-      setIsLoading(true);
-      const response = await authService.getProfile();
-      if (response.data) {
-        setUser(response.data);
-      }
+      console.log("👤 Kullanıcı bilgileri getiriliyor...");
+
+      // userService.getProfile kullan, authService.getProfile değil
+      const response = await userService.getProfile();
+      console.log("✅ Kullanıcı bilgileri alındı:", response);
+
+      setUser(response);
+      setEditData({
+        username: response.username || "",
+        email: response.email || "",
+        password: "",
+      });
     } catch (error) {
-      console.error("Kullanıcı bilgileri alınamadı:", error);
-      // Yedek olarak lokalde saklanan bilgileri kullan
-      const userData = await getUserData();
-      if (userData) {
-        setUser(userData);
-      }
-    } finally {
-      setIsLoading(false);
+      console.error("❌ Kullanıcı bilgileri alınamadı:", error);
+      Alert.alert("Hata", "Kullanıcı bilgileri alınamadı");
     }
   };
 
   const handleImagePick = async () => {
-    // Expo ImagePicker'ı yüklemeniz gerekebilir:
-    // npx expo install expo-image-picker
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    try {
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-    if (status !== "granted") {
-      Alert.alert("İzin Gerekli", "Galeriye erişim izni vermeniz gerekiyor");
-      return;
-    }
+      if (status !== "granted") {
+        Alert.alert("İzin Gerekli", "Galeriye erişim izni vermeniz gerekiyor");
+        return;
+      }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
 
-    if (!result.canceled) {
-      uploadProfileImage(result.assets[0]);
+      if (!result.canceled) {
+        uploadProfileImage(result.assets[0]);
+      }
+    } catch (error) {
+      console.error("❌ Resim seçme hatası:", error);
+      Alert.alert("Hata", "Resim seçilirken bir hata oluştu");
     }
   };
 
   const uploadProfileImage = async (imageFile) => {
     try {
-      setIsLoading(true);
-      const formData = new FormData();
-
-      // Dosya nesnesini oluştur
-      const fileUri = imageFile.uri;
-      const filename = fileUri.split("/").pop();
-      const match = /\.(\w+)$/.exec(filename);
-      const type = match ? `image/${match[1]}` : "image";
-
-      formData.append("profileImage", {
-        uri: Platform.OS === "ios" ? fileUri.replace("file://", "") : fileUri,
-        name: filename,
-        type,
-      });
-
-      const token = await getUserToken();
-
-      const response = await fetch(
-        "http://192.168.1.105:5000/api/users/profile-image",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "multipart/form-data",
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
-        }
-      );
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setUser((prev) => ({ ...prev, profileImage: data.profileImage }));
-        Alert.alert("Başarılı", "Profil resmi güncellendi");
-      } else {
-        Alert.alert("Hata", data.message || "Resim yüklenemedi");
-      }
+      setLoading(true);
+      // Burada profil resmi yükleme işlemi yapılacak
+      // Şimdilik sadece local state'i güncelliyoruz
+      setUser((prev) => ({ ...prev, profileImage: imageFile.uri }));
+      Alert.alert("Başarılı", "Profil resmi güncellendi");
     } catch (error) {
-      console.error("Profil resmi yükleme hatası:", error);
-      Alert.alert("Hata", "Profil resmi yüklenirken bir sorun oluştu");
+      console.error("❌ Resim yükleme hatası:", error);
+      Alert.alert("Hata", "Resim yüklenirken bir hata oluştu");
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  // Örnek istatistik verileri
-  const userStats = {
-    totalStudyTime: "124 saat",
-    weeklyAverage: "18 saat",
-    longestStreak: "12 gün",
-    totalTasks: "156",
-    completedTasks: "134",
-    efficiency: "86%",
+  const handleEdit = () => {
+    setEditData({
+      username: user.username || "",
+      email: user.email || "",
+      password: "",
+    });
+    setShowEditModal(true);
   };
 
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#f5f5f5" }}>
-      <ScrollView>
-        {/* Profil Başlığı */}
-        <View style={styles.header}>
-          <View style={styles.profileHeader}>
-            <View style={styles.profileImageContainer}>
-              <TouchableOpacity
-                onPress={handleImagePick}
-                style={styles.profileImageWrapper}
-              >
-                {user.profileImage ? (
-                  <Image
-                    source={{ uri: user.profileImage }}
-                    style={styles.profileImage}
-                  />
-                ) : (
-                  <View style={styles.placeholderImage}>
-                    <Ionicons name="person" size={40} color="#2563eb" />
-                  </View>
-                )}
-                <View style={styles.editIcon}>
-                  <Ionicons name="pencil" size={14} color="#fff" />
-                </View>
-              </TouchableOpacity>
-            </View>
+  const handleSave = async () => {
+    try {
+      if (
+        !editData.username.trim() ||
+        !editData.email.trim() ||
+        !editData.password.trim()
+      ) {
+        Alert.alert("Hata", "Lütfen tüm alanları doldurun");
+        return;
+      }
 
-            <View style={styles.profileInfo}>
-              <Text style={styles.username}>
-                {user.username || "Kullanıcı"}
-              </Text>
-              <Text style={styles.email}>{user.email || "Email"}</Text>
-            </View>
-          </View>
+      setLoading(true);
 
-          <TouchableOpacity
-            style={styles.settingsButton}
-            onPress={() => navigation.navigate("settings")}
+      const response = await authService.updateProfile(editData);
+      console.log("✅ Profil güncellendi:", response);
+
+      setUser(response.user);
+      setShowEditModal(false);
+      Alert.alert("Başarılı", "Profil bilgileri güncellendi");
+    } catch (error) {
+      console.error("❌ Profil güncellenemedi:", error);
+      Alert.alert(
+        "Hata",
+        error.message || "Profil güncellenirken bir hata oluştu"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    Alert.alert("Çıkış Yap", "Çıkış yapmak istediğinizden emin misiniz?", [
+      { text: "İptal", style: "cancel" },
+      {
+        text: "Çıkış Yap",
+        style: "destructive",
+        onPress: async () => {
+          await authService.logout();
+          router.replace("/(auth)/login");
+        },
+      },
+    ]);
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return "Bilinmiyor";
+    try {
+      return format(new Date(dateString), "d MMMM yyyy", { locale: tr });
+    } catch (error) {
+      return "Bilinmiyor";
+    }
+  };
+
+  const ProfileInfoCard = ({ icon, title, value, onPress }) => (
+    <TouchableOpacity style={styles.infoCard} onPress={onPress}>
+      <View style={styles.infoCardContent}>
+        <View style={styles.infoIcon}>
+          <Ionicons name={icon} size={24} color="#667eea" />
+        </View>
+        <View style={styles.infoContent}>
+          <Text style={styles.infoTitle}>{title}</Text>
+          <Text style={styles.infoValue}>{value}</Text>
+        </View>
+        {onPress && (
+          <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+
+  const ActionCard = ({
+    icon,
+    title,
+    description,
+    onPress,
+    gradient,
+    textColor = "white",
+  }) => (
+    <TouchableOpacity onPress={onPress} style={styles.actionCard}>
+      <LinearGradient colors={gradient} style={styles.actionGradient}>
+        <View style={styles.actionIcon}>
+          <Ionicons name={icon} size={24} color={textColor} />
+        </View>
+        <View style={styles.actionContent}>
+          <Text style={[styles.actionTitle, { color: textColor }]}>
+            {title}
+          </Text>
+          <Text
+            style={[
+              styles.actionDescription,
+              { color: textColor, opacity: 0.8 },
+            ]}
           >
-            <Ionicons name="settings-outline" size={24} color="#666" />
-          </TouchableOpacity>
+            {description}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={textColor} />
+      </LinearGradient>
+    </TouchableOpacity>
+  );
+
+  if (loading && !user.name) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#667eea" />
+          <Text style={styles.loadingText}>Profil bilgileri yükleniyor...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <LinearGradient colors={["#667eea", "#764ba2"]} style={styles.header}>
+          <View style={styles.headerContent}>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={styles.backButton}
+            >
+              <Ionicons name="arrow-back" size={24} color="white" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Profil</Text>
+            <TouchableOpacity onPress={handleEdit} style={styles.editButton}>
+              <Ionicons name="create-outline" size={24} color="white" />
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+
+        {/* Profil Resmi ve Temel Bilgiler */}
+        <View style={styles.profileSection}>
+          <View style={styles.profileImageContainer}>
+            <TouchableOpacity
+              onPress={handleImagePick}
+              style={styles.profileImageWrapper}
+            >
+              {user.profileImage ? (
+                <Image
+                  source={{ uri: user.profileImage }}
+                  style={styles.profileImage}
+                />
+              ) : (
+                <View style={styles.defaultProfileImage}>
+                  <Ionicons name="person" size={60} color="#9CA3AF" />
+                </View>
+              )}
+              <View style={styles.cameraIcon}>
+                <Ionicons name="camera" size={16} color="white" />
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.userName}>{user.name || "Kullanıcı"}</Text>
+          <Text style={styles.userUsername}>
+            @{user.username || "username"}
+          </Text>
+          <Text style={styles.memberSince}>
+            Üye olma tarihi: {formatDate(user.createdAt)}
+          </Text>
         </View>
 
-        {/* İstatistikler */}
-        <View style={styles.statsContainer}>
-          <Text style={styles.sectionTitle}>İstatistiklerim</Text>
-          <View style={styles.statsGrid}>
-            <View style={styles.statItem}>
-              <Ionicons name="time-outline" size={24} color="#2563eb" />
-              <Text style={styles.statValue}>{userStats.totalStudyTime}</Text>
-              <Text style={styles.statLabel}>Toplam Çalışma</Text>
-            </View>
-
-            <View style={styles.statItem}>
-              <Ionicons name="analytics-outline" size={24} color="#8b5cf6" />
-              <Text style={styles.statValue}>{userStats.weeklyAverage}</Text>
-              <Text style={styles.statLabel}>Haftalık Ortalama</Text>
-            </View>
-
-            <View style={styles.statItem}>
-              <Ionicons name="flame-outline" size={24} color="#f59e0b" />
-              <Text style={styles.statValue}>{userStats.longestStreak}</Text>
-              <Text style={styles.statLabel}>En Uzun Seri</Text>
-            </View>
-
-            <View style={styles.statItem}>
-              <Ionicons
-                name="checkmark-done-outline"
-                size={24}
-                color="#10b981"
-              />
-              <Text style={styles.statValue}>{userStats.efficiency}</Text>
-              <Text style={styles.statLabel}>Verimlilik</Text>
-            </View>
+        {/* Kullanıcı Bilgileri */}
+        <View style={styles.infoSection}>
+          <Text style={styles.sectionTitle}>👤 Kişisel Bilgiler</Text>
+          <View style={styles.infoCards}>
+            <ProfileInfoCard
+              icon="person-outline"
+              title="Ad Soyad"
+              value={user.name || "Belirtilmemiş"}
+            />
+            <ProfileInfoCard
+              icon="at-outline"
+              title="Kullanıcı Adı"
+              value={user.username || "Belirtilmemiş"}
+            />
+            <ProfileInfoCard
+              icon="mail-outline"
+              title="E-posta"
+              value={user.email || "Belirtilmemiş"}
+            />
+            <ProfileInfoCard
+              icon="calendar-outline"
+              title="Üyelik Tarihi"
+              value={formatDate(user.createdAt)}
+            />
           </View>
         </View>
 
-        {/* Hızlı İşlemler */}
-        <View style={styles.actionsContainer}>
-          <Text style={styles.sectionTitle}>Hızlı İşlemler</Text>
-          <View style={styles.actionButtons}>
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: "#e1f0ff" }]}
-            >
-              <Text style={[styles.actionButtonText, { color: "#2563eb" }]}>
-                Yeni Görev Ekle
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: "#e1faef" }]}
-              onPress={() => navigation.navigate("schedule")}
-            >
-              <Text style={[styles.actionButtonText, { color: "#10b981" }]}>
-                Çalışma Planı Oluştur
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: "#f3e8ff" }]}
-            >
-              <Text style={[styles.actionButtonText, { color: "#8b5cf6" }]}>
-                Takvimi Görüntüle
-              </Text>
-            </TouchableOpacity>
+        {/* Hızlı Eylemler */}
+        <View style={styles.actionsSection}>
+          <Text style={styles.sectionTitle}>⚡ Hızlı Eylemler</Text>
+          <View style={styles.actionsList}>
+            <ActionCard
+              icon="create-outline"
+              title="Profili Düzenle"
+              description="Kişisel bilgilerinizi güncelleyin"
+              onPress={handleEdit}
+              gradient={["#667eea", "#764ba2"]}
+            />
+            <ActionCard
+              icon="calendar-outline"
+              title="Takvimi Görüntüle"
+              description="Etkinliklerinizi inceleyin"
+              onPress={() => router.push("/(tabs)/schedule")}
+              gradient={["#4facfe", "#00f2fe"]}
+            />
+            <ActionCard
+              icon="settings-outline"
+              title="Uygulama Ayarları"
+              description="Tercihleri özelleştirin"
+              onPress={() => router.push("/(tabs)/settings")}
+              gradient={["#43e97b", "#38f9d7"]}
+            />
+            <ActionCard
+              icon="log-out-outline"
+              title="Çıkış Yap"
+              description="Hesabınızdan güvenli çıkış yapın"
+              onPress={handleLogout}
+              gradient={["#ff6b6b", "#ee5a52"]}
+            />
           </View>
         </View>
+
+        {/* Alt boşluk */}
+        <View style={styles.bottomSpacing} />
       </ScrollView>
+
+      {/* Düzenleme Modal'ı */}
+      <Modal
+        visible={showEditModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowEditModal(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowEditModal(false)}>
+              <Text style={styles.modalCancelButton}>İptal</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Profili Düzenle</Text>
+            <TouchableOpacity onPress={handleSave} disabled={loading}>
+              <Text
+                style={[
+                  styles.modalSaveButton,
+                  loading && styles.disabledButton,
+                ]}
+              >
+                {loading ? "Kaydediliyor..." : "Kaydet"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalContent}>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Kullanıcı Adı</Text>
+              <TextInput
+                style={styles.input}
+                value={editData.username}
+                onChangeText={(text) =>
+                  setEditData((prev) => ({ ...prev, username: text }))
+                }
+                placeholder="Kullanıcı adınızı girin"
+                autoCapitalize="none"
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>E-posta</Text>
+              <TextInput
+                style={styles.input}
+                value={editData.email}
+                onChangeText={(text) =>
+                  setEditData((prev) => ({ ...prev, email: text }))
+                }
+                placeholder="E-posta adresinizi girin"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Mevcut Şifre</Text>
+              <TextInput
+                style={styles.input}
+                value={editData.password}
+                onChangeText={(text) =>
+                  setEditData((prev) => ({ ...prev, password: text }))
+                }
+                placeholder="Mevcut şifrenizi girin"
+                secureTextEntry
+              />
+              <Text style={styles.inputHelper}>
+                Değişiklikleri kaydetmek için mevcut şifrenizi girmeniz
+                gerekiyor
+              </Text>
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -243,122 +428,264 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#F8FAFC",
+  },
+  scrollView: {
+    flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: "#6B7280",
   },
   header: {
-    backgroundColor: "white",
-    padding: 20,
-    marginBottom: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+  },
+  headerContent: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  profileHeader: {
-    flexDirection: "row",
+  backButton: {
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "white",
+  },
+  editButton: {
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+  },
+  profileSection: {
     alignItems: "center",
+    paddingVertical: 30,
+    paddingHorizontal: 20,
   },
   profileImageContainer: {
-    marginRight: 16,
+    marginBottom: 20,
   },
   profileImageWrapper: {
     position: "relative",
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "#f0f0f0",
-    overflow: "hidden",
   },
   profileImage: {
-    width: "100%",
-    height: "100%",
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 4,
+    borderColor: "white",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  placeholderImage: {
-    width: "100%",
-    height: "100%",
-    backgroundColor: "#e1f0ff",
+  defaultProfileImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "#F3F4F6",
     justifyContent: "center",
     alignItems: "center",
+    borderWidth: 4,
+    borderColor: "white",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  editIcon: {
+  cameraIcon: {
     position: "absolute",
     bottom: 0,
     right: 0,
-    backgroundColor: "#2563eb",
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#667eea",
     justifyContent: "center",
     alignItems: "center",
+    borderWidth: 3,
+    borderColor: "white",
   },
-  profileInfo: {
-    flex: 1,
-  },
-  username: {
-    fontSize: 18,
+  userName: {
+    fontSize: 24,
     fontWeight: "bold",
-    color: "#333",
+    color: "#1F2937",
+    marginBottom: 4,
   },
-  email: {
+  userUsername: {
+    fontSize: 16,
+    color: "#6B7280",
+    marginBottom: 8,
+  },
+  memberSince: {
     fontSize: 14,
-    color: "#666",
+    color: "#9CA3AF",
   },
-  settingsButton: {
-    padding: 10,
-  },
-  statsContainer: {
-    backgroundColor: "white",
-    padding: 20,
-    marginBottom: 16,
-    marginHorizontal: 16,
-    borderRadius: 12,
+  infoSection: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "bold",
-    color: "#333",
+    color: "#1F2937",
     marginBottom: 16,
   },
-  statsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-  },
-  statItem: {
-    width: "48%",
-    backgroundColor: "#f5f5f5",
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  statValue: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#333",
-    marginVertical: 4,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: "#666",
-    textAlign: "center",
-  },
-  actionsContainer: {
-    backgroundColor: "white",
-    padding: 20,
-    marginHorizontal: 16,
-    marginBottom: 30,
-    borderRadius: 12,
-  },
-  actionButtons: {
+  infoCards: {
     gap: 12,
   },
-  actionButton: {
-    padding: 16,
+  infoCard: {
+    backgroundColor: "white",
     borderRadius: 12,
-    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  actionButtonText: {
-    fontWeight: "600",
+  infoCardContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+  },
+  infoIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#F0F4FF",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 16,
+  },
+  infoContent: {
+    flex: 1,
+  },
+  infoTitle: {
+    fontSize: 14,
+    color: "#6B7280",
+    marginBottom: 2,
+  },
+  infoValue: {
     fontSize: 16,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  actionsSection: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  actionsList: {
+    gap: 12,
+  },
+  actionCard: {
+    borderRadius: 12,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  actionGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+  },
+  actionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 16,
+  },
+  actionContent: {
+    flex: 1,
+  },
+  actionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 2,
+  },
+  actionDescription: {
+    fontSize: 14,
+  },
+  bottomSpacing: {
+    height: 20,
+  },
+  // Modal Styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: "#F8FAFC",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+    backgroundColor: "white",
+  },
+  modalCancelButton: {
+    fontSize: 16,
+    color: "#6B7280",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#1F2937",
+  },
+  modalSaveButton: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#667eea",
+  },
+  disabledButton: {
+    opacity: 0.5,
+  },
+  modalContent: {
+    flex: 1,
+    padding: 20,
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1F2937",
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: "white",
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: "#1F2937",
+  },
+  inputHelper: {
+    fontSize: 14,
+    color: "#6B7280",
+    marginTop: 4,
   },
 });
